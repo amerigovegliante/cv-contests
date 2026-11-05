@@ -1,0 +1,13 @@
+# Configuration for test_contest.py
+
+detector:
+  type: SIFT          # Supported: SIFT, ORB, AKAZE, BRISK
+  nfeatures: 500       # 0 = unlimited (SIFT only)
+  nOctaveLayers: 15    # Number of octave layers (SIFT only)
+  contrastThreshold: 0.1  # Contrast threshold (SIFT only)
+  edgeThreshold: 5   # Edge threshold (SIFT only)
+  sigma: 2.0          # Gaussian sigma (SIFT only)
+
+matching:
+  ratio_thresh: 0.67  # Lowe's ratio test threshold (0.0 - 1.0)
+
