@@ -1,6 +1,8 @@
 import os
 import cv2
 import numpy as np
+import matplotlib
+matplotlib.use('Agg')  # headless-safe; remove if you want interactive plots
 import matplotlib.pyplot as plt
 import yaml
 import argparse
@@ -8,13 +10,50 @@ from datetime import datetime
 
 
 def load_config(config_path: str) -> dict:
-    """Load YAML configuration file."""
     with open(config_path, 'r') as f:
         return yaml.safe_load(f)
 
 
+def to_root_sift(descriptors, eps=1e-7):
+    """Convert SIFT descriptors to RootSIFT (L1-normalize then sqrt)."""
+    if descriptors is None or len(descriptors) == 0:
+        return descriptors
+    if descriptors.dtype not in (np.float32, np.float64):
+        return descriptors
+    desc = descriptors.astype(np.float32, copy=True)
+    desc /= (desc.sum(axis=1, keepdims=True) + eps)
+    desc = np.sqrt(desc)
+    return desc
+
+
+def count_ransac_inliers(sel_matches, q_kps, db_kps,
+                         reproj_thresh=5.0, min_inliers=4):
+    """
+    Estimate a homography from ratio-filtered matches and return the
+    number of inliers consistent with it.
+
+    If there are fewer than `min_inliers` matches, or homography estimation
+    fails, returns 0 (this pair contributes nothing to the ranking).
+    """
+    if len(sel_matches) < min_inliers:
+        return 0
+    if q_kps is None or db_kps is None:
+        return 0
+
+    src_pts = np.float32(
+        [q_kps[m.queryIdx].pt for m in sel_matches]
+    ).reshape(-1, 1, 2)
+    dst_pts = np.float32(
+        [db_kps[m.trainIdx].pt for m in sel_matches]
+    ).reshape(-1, 1, 2)
+
+    M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, reproj_thresh)
+    if M is None or mask is None:
+        return 0
+    return int(mask.sum())
+
+
 def build_detector(det_cfg: dict):
-    """Instantiate a feature detector from a detector config dict."""
     det_type = det_cfg.get('type', 'SIFT').upper()
 
     if det_type == 'SIFT':
@@ -26,49 +65,30 @@ def build_detector(det_cfg: dict):
             sigma=det_cfg.get('sigma', 1.6),
         )
     elif det_type == 'ORB':
-        detector = cv2.ORB_create(
-            nfeatures=det_cfg.get('nfeatures', 500),
-        )
+        detector = cv2.ORB_create(nfeatures=det_cfg.get('nfeatures', 500))
     elif det_type == 'AKAZE':
         detector = cv2.AKAZE.create()
     elif det_type == 'BRISK':
-        # OpenCV 5: BRISK lives under xfeatures2d (requires opencv-contrib-python)
         detector = cv2.xfeatures2d.BRISK.create()
     else:
-        raise ValueError(f"Unsupported detector type: '{det_type}'. "
-                         "Choose from: SIFT, ORB, AKAZE, BRISK.")
+        raise ValueError(f"Unsupported detector type: '{det_type}'.")
 
     return detector, det_type
 
 
 def resolve_query_config(cfg: dict, logo_name: str) -> dict:
-    """
-    Return the config block for a specific query logo.
-
-    Lookup order:
-      1. cfg['queries'][<key>] where <key> is the lowercased logo name
-         with spaces replaced by underscores.
-      2. The top-level cfg itself (global fallback).
-
-    The per-query block may contain its own 'detector' and 'matching'
-    sections. Missing keys fall back to the global config.
-    """
     key = logo_name.lower().replace(' ', '_')
     per_query = cfg.get('queries', {}).get(key)
     if per_query is None:
         return cfg
-
-    # Merge: per-query values override global, but global fills gaps.
-    merged = {
+    return {
         'detector': {**cfg.get('detector', {}), **per_query.get('detector', {})},
         'matching': {**cfg.get('matching', {}), **per_query.get('matching', {})},
     }
-    return merged
 
 
 def save_results(results_path: str, cfg: dict, per_query_cfg: dict,
                  logo_names: list, AP_all: np.ndarray) -> None:
-    """Save AP results and the per-query parameters used to a .txt file."""
     mAP = float(np.mean(AP_all))
 
     with open(results_path, 'w') as f:
@@ -77,7 +97,6 @@ def save_results(results_path: str, cfg: dict, per_query_cfg: dict,
         f.write("=" * 60 + "\n")
         f.write(f"Run date : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
 
-        # --- Results ---
         f.write("RESULTS\n")
         f.write("-" * 40 + "\n")
         f.write("Average Precision (AP):\n")
@@ -85,7 +104,6 @@ def save_results(results_path: str, cfg: dict, per_query_cfg: dict,
             f.write(f"  {name:12s}  ==>  {ap:.4f}\n")
         f.write(f"\nMean Average Precision (mAP)  ==>  {mAP:.4f}\n\n")
 
-        # --- Per-query parameters actually used ---
         f.write("PARAMETERS USED PER QUERY\n")
         f.write("-" * 40 + "\n")
         for name in logo_names:
@@ -93,39 +111,37 @@ def save_results(results_path: str, cfg: dict, per_query_cfg: dict,
             det = qcfg.get('detector', {})
             mat = qcfg.get('matching', {})
             f.write(f"  [{name}]\n")
-            f.write(f"    detector.type          : {det.get('type', 'SIFT')}\n")
+            f.write(f"    detector.type           : {det.get('type', 'SIFT')}\n")
             if det.get('type', 'SIFT').upper() == 'SIFT':
-                f.write(f"    detector.nfeatures     : {det.get('nfeatures', 0)}\n")
-                f.write(f"    detector.nOctaveLayers : {det.get('nOctaveLayers', 3)}\n")
-                f.write(f"    detector.contrastThresh: {det.get('contrastThreshold', 0.04)}\n")
-                f.write(f"    detector.edgeThreshold : {det.get('edgeThreshold', 10)}\n")
-                f.write(f"    detector.sigma         : {det.get('sigma', 1.6)}\n")
-            f.write(f"    matching.ratio_thresh  : {mat.get('ratio_thresh', 0.75)}\n\n")
+                f.write(f"    detector.nfeatures      : {det.get('nfeatures', 0)}\n")
+                f.write(f"    detector.nOctaveLayers  : {det.get('nOctaveLayers', 3)}\n")
+                f.write(f"    detector.contrastThresh : {det.get('contrastThreshold', 0.04)}\n")
+                f.write(f"    detector.edgeThreshold  : {det.get('edgeThreshold', 10)}\n")
+                f.write(f"    detector.sigma          : {det.get('sigma', 1.6)}\n")
+                f.write(f"    detector.root_sift      : {det.get('root_sift', False)}\n")
+            f.write(f"    matching.ratio_thresh   : {mat.get('ratio_thresh', 0.75)}\n")
+            f.write(f"    matching.ransac_reproj  : {mat.get('ransac_reproj_thresh', 5.0)}\n")
+            f.write(f"    matching.ransac_min_inl : {mat.get('ransac_min_inliers', 4)}\n\n")
         f.write("=" * 60 + "\n")
 
     print(f"\nResults saved to: {results_path}")
 
 
 def main():
-    # -------------------------------------------------------------------------
-    # Parse CLI arguments
-    # -------------------------------------------------------------------------
     parser = argparse.ArgumentParser(description="Logo Contest - Feature Matching")
-    parser.add_argument('--config', '-c', default='config.yaml',
-                        help="Path to the YAML configuration file (default: config.yaml)")
-    parser.add_argument('--output', '-o', default='results.txt',
-                        help="Path to the output results file (default: results.txt)")
+    parser.add_argument('--config', '-c', default='config.yaml')
+    parser.add_argument('--output', '-o', default='results.txt')
     args = parser.parse_args()
 
-    # -------------------------------------------------------------------------
-    # Load configuration
-    # -------------------------------------------------------------------------
     cfg = load_config(args.config)
     print(f"Config loaded from : {args.config}")
     if 'queries' in cfg:
         print(f"Per-query overrides: {list(cfg['queries'].keys())}")
     print(f"Global detector    : {cfg.get('detector', {}).get('type', 'SIFT')}")
-    print(f"Global ratio_thresh: {cfg.get('matching', {}).get('ratio_thresh', 0.75)}\n")
+    print(f"Global ratio_thresh: {cfg.get('matching', {}).get('ratio_thresh', 0.75)}")
+    print(f"Global root_sift   : {cfg.get('detector', {}).get('root_sift', False)}")
+    print(f"Global RANSAC      : reproj={cfg.get('matching', {}).get('ransac_reproj_thresh', 5.0)}, "
+          f"min_inliers={cfg.get('matching', {}).get('ransac_min_inliers', 4)}\n")
 
     #################################################################################
     #                        FIRST PART - READING IMAGES                            #
@@ -133,16 +149,14 @@ def main():
     query_images, db_images, logo_names = [], [], []
     img_size = (400, 400)
 
-    query_dir = sorted(os.listdir('query/'))
-    for img_name in query_dir:
+    for img_name in sorted(os.listdir('query/')):
         img = cv2.imread(os.path.join('query/', img_name))
         img = cv2.resize(img, dsize=img_size)
         query_images.append(img)
         logo_names.append(os.path.splitext(img_name)[0][:-5].capitalize())
     print("Query images loaded!")
 
-    db_dir = sorted(os.listdir('database/'), key=lambda x: int(x.split('.')[0]))
-    for img_name in db_dir:
+    for img_name in sorted(os.listdir('database/'), key=lambda x: int(x.split('.')[0])):
         img = cv2.imread(os.path.join('database/', img_name))
         img = cv2.resize(img, dsize=img_size)
         db_images.append(img)
@@ -165,7 +179,6 @@ def main():
     GT_matrix = np.vstack([coca_cola_GT, heineken_GT, marlboro_GT, starbucks_GT])
     print(f"GT matrix shape: {GT_matrix.shape}")
 
-    # --- Sanity checks on ground truth ---
     n_coca_cola = int(coca_cola_GT.sum())
     n_heineken = int(heineken_GT.sum())
     n_marlboro = int(marlboro_GT.sum())
@@ -178,13 +191,11 @@ def main():
     print(f"Number of database images (starbucks): {n_starbucks}")
     print(f"Number of database images (others): {n_others}")
     if n_others < 0:
-        print("WARNING: ground-truth arrays overlap — some DB images are "
-              "labelled with more than one logo. Check the GT index ranges.")
+        print("WARNING: ground-truth arrays overlap.")
 
     #################################################################################
     #               THIRD PART - PER-QUERY FEATURE EXTRACTION                       #
     #################################################################################
-    # Resolve config and build one detector per query.
     per_query_cfg = {}
     query_kps, query_des = [], []
     query_det_type = []
@@ -193,59 +204,82 @@ def main():
         qcfg = resolve_query_config(cfg, name)
         per_query_cfg[name] = qcfg
 
-        det, det_type = build_detector(qcfg.get('detector', {}))
+        det_cfg = qcfg.get('detector', {})
+        use_root_sift = det_cfg.get('root_sift', False)
+
+        det, det_type = build_detector(det_cfg)
         kp, des = det.detectAndCompute(query_images[i], None)
+        if use_root_sift:
+            des = to_root_sift(des)
+
         query_kps.append(kp)
         query_des.append(des)
         query_det_type.append(det_type)
-        print(f"Query '{name}': detector={det_type}, keypoints={len(kp) if kp else 0}")
-
-    # Database features only need to be extracted once, with the global detector.
-    # (If queries use different detectors, database descriptors must be
-    # extracted per query's detector — see note below.)
-    print("\nNOTE: each query uses its own detector; DB descriptors are "
-          "computed per query as needed.\n")
+        print(f"Query '{name}': detector={det_type}, "
+              f"root_sift={use_root_sift}, "
+              f"keypoints={len(kp) if kp else 0}")
 
     #################################################################################
-    #                 FOURTH PART - FEATURE MATCHING (per query)                    #
+    #                 FOURTH PART - FEATURE MATCHING + RANSAC                       #
     #################################################################################
     num_matches = np.zeros((len(query_images), len(db_images)))
     logo_matches = []
 
     for q in range(len(query_images)):
-        # (Re)build the DB descriptors with THIS query's detector.
-        # Detectors like SIFT, ORB, BRISK, AKAZE produce different descriptor
-        # types; you cannot mix them across query and database.
         det_cfg = per_query_cfg[logo_names[q]].get('detector', {})
-        det, det_type = build_detector(det_cfg)
-        ratio_thresh = per_query_cfg[logo_names[q]].get('matching', {}).get('ratio_thresh', 0.75)
+        mat_cfg = per_query_cfg[logo_names[q]].get('matching', {})
 
-        db_des_q = [det.detectAndCompute(img, None)[1] for img in db_images]
-        db_kps_q = [det.detectAndCompute(img, None)[0] for img in db_images]
+        use_root_sift = det_cfg.get('root_sift', False)
+        ratio_thresh = mat_cfg.get('ratio_thresh', 0.75)
+        ransac_reproj = mat_cfg.get('ransac_reproj_thresh', 5.0)
+        ransac_min = mat_cfg.get('ransac_min_inliers', 4)
+
+        det, det_type = build_detector(det_cfg)
+
+        # Compute DB features once per query, applying RootSIFT if enabled.
+        db_des_q, db_kps_q = [], []
+        for img in db_images:
+            kp, des = det.detectAndCompute(img, None)
+            if use_root_sift:
+                des = to_root_sift(des)
+            db_kps_q.append(kp)
+            db_des_q.append(des)
 
         norm = cv2.NORM_HAMMING if det_type in ('ORB', 'BRISK') else cv2.NORM_L2
         bf = cv2.BFMatcher_create(norm)
 
         q_des = query_des[q]
+        q_kps = query_kps[q]
         q_matches = []
 
         for db in range(len(db_images)):
             d_des = db_des_q[db]
-            if q_des is None or d_des is None or len(q_des) < 2 or len(d_des) < 2:
+            d_kps = db_kps_q[db]
+            if (q_des is None or d_des is None
+                    or len(q_des) < 2 or len(d_des) < 2):
                 num_matches[q, db] = 0
                 q_matches.append([])
                 continue
 
             matches = bf.knnMatch(q_des, d_des, k=2)
-            n_matches = 0
             sel_matches = []
             for pair in matches:
                 if len(pair) < 2:
                     continue
                 m, n = pair
                 if m.distance < ratio_thresh * n.distance:
-                    n_matches += 1
                     sel_matches.append(m)
+
+            use_ransac = mat_cfg.get('use_ransac', False)
+
+            if use_ransac:
+                n_matches = count_ransac_inliers(
+                    sel_matches, q_kps, d_kps,
+                    reproj_thresh=ransac_reproj,
+                    min_inliers=ransac_min,
+                )
+            else:
+                n_matches = len(sel_matches)
 
             num_matches[q, db] = n_matches
             q_matches.append(sel_matches)
@@ -253,7 +287,9 @@ def main():
         logo_matches.append(q_matches)
 
     for idx, logo in enumerate(logo_names):
-        print(f"Number of matches ({logo}) [{query_det_type[idx]}]:")
+        rs = per_query_cfg[logo].get('detector', {}).get('root_sift', False)
+        print(f"Number of RANSAC inliers ({logo}) [{query_det_type[idx]}"
+              f"{', RootSIFT' if rs else ''}]:")
         print(num_matches[idx])
 
     #################################################################################
@@ -284,8 +320,10 @@ def main():
             AP = AP + p / 11
         AP_all[i] = AP
 
+        rs_tag = " + RootSIFT" if per_query_cfg[logo_names[i]].get(
+            'detector', {}).get('root_sift', False) else ""
         plt.subplot(2, 2, i + 1)
-        plt.title(f"{logo_names[i]} ({query_det_type[i]}) - AP: {AP:.3f}")
+        plt.title(f"{logo_names[i]} ({query_det_type[i]}{rs_tag}) - AP: {AP:.3f}")
         plt.plot(rec, prec, '-', linewidth=3)
         plt.plot(np.linspace(0, 1, num=11), interp_prec, 'o', color='red', linewidth=2)
         plt.legend(['Precision', 'Interpolated AP'])
@@ -294,13 +332,18 @@ def main():
         plt.ylabel('Precision')
         plt.axis((0, 1, 0, 1.1))
 
+    plt.savefig('pr_curves.png', dpi=120, bbox_inches='tight')
+    print("\nPR curves saved to: pr_curves.png")
+
     #################################################################################
     #                 SIXTH PART - Print & save results                             #
     #################################################################################
     print('\nBASELINE RESULTS')
     print("Average Precision (AP):\n")
     for i in range(len(query_images)):
-        print(f'{logo_names[i]:9s} ({query_det_type[i]:5s}) ==>  {AP_all[i]:.3f}')
+        rs = per_query_cfg[logo_names[i]].get('detector', {}).get('root_sift', False)
+        rs_tag = "+RS" if rs else "   "
+        print(f'{logo_names[i]:9s} ({query_det_type[i]:5s}{rs_tag}) ==>  {AP_all[i]:.3f}')
 
     print(f"\nMean Average Precision (mAP) ==> {np.mean(AP_all):.3f}")
 
@@ -309,4 +352,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    plt.show()

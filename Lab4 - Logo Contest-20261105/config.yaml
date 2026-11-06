@@ -1,3 +1,15 @@
+# =============================================================================
+# Logo Contest - Configuration (FINAL, mAP 0.822)
+# =============================================================================
+# All queries use SIFT. The single per-query override is edgeThreshold=15
+# for Coca-Cola, which lifted its AP from 0.651 to 0.805 by retaining
+# edge features on the script typography.
+#
+# RANSAC: off. Tested and rejected — it reduced mAP to 0.757 because
+# Marlboro's true-positive pairs produce fewer than 4 matches, below
+# the minimum required for homography estimation.
+# =============================================================================
+
 detector:
   type: SIFT
   nfeatures: 500
@@ -5,27 +17,64 @@ detector:
   contrastThreshold: 0.1
   edgeThreshold: 5
   sigma: 2.0
+  root_sift: false
 
 matching:
   ratio_thresh: 0.67
+  ransac_reproj_thresh: 5.0
+  ransac_min_inliers: 4
+  use_ransac: false
 
 queries:
+
   cocacola:
     detector:
       type: SIFT
       nfeatures: 500
       nOctaveLayers: 15
       contrastThreshold: 0.1
-      edgeThreshold: 15      # the fix from run #4
+      edgeThreshold: 15          # the key discovery
       sigma: 2.0
+      root_sift: false
     matching:
       ratio_thresh: 0.75
+      use_ransac: false
+
   heineken:
-    matching:
-      ratio_thresh: 0.67     # run #4's setting — gave 0.855
-  marlboro:
-    matching:
-      ratio_thresh: 0.67     # run #1's setting — gave 0.747
-  starbucks:
+    detector:
+      type: SIFT
+      nfeatures: 500
+      nOctaveLayers: 15
+      contrastThreshold: 0.1
+      edgeThreshold: 5
+      sigma: 2.0
+      root_sift: false
     matching:
       ratio_thresh: 0.67
+      use_ransac: false
+
+  marlboro:
+    detector:
+      type: SIFT
+      nfeatures: 500
+      nOctaveLayers: 15
+      contrastThreshold: 0.1
+      edgeThreshold: 5
+      sigma: 2.0
+      root_sift: false
+    matching:
+      ratio_thresh: 0.67
+      use_ransac: false
+
+  starbucks:
+    detector:
+      type: SIFT
+      nfeatures: 500
+      nOctaveLayers: 15
+      contrastThreshold: 0.1
+      edgeThreshold: 5
+      sigma: 2.0
+      root_sift: false
+    matching:
+      ratio_thresh: 0.67
+      use_ransac: false

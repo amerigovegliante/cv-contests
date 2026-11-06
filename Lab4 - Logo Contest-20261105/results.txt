@@ -1,7 +1,7 @@
 ============================================================
            LOGO CONTEST - RESULTS
 ============================================================
-Run date : 2026-11-05 19:35:43
+Run date : 2026-11-06 01:00:43
 
 RESULTS
 ----------------------------------------
@@ -16,39 +16,51 @@ Mean Average Precision (mAP)  ==>  0.8216
 PARAMETERS USED PER QUERY
 ----------------------------------------
   [Cocacola]
-    detector.type          : SIFT
-    detector.nfeatures     : 500
-    detector.nOctaveLayers : 15
-    detector.contrastThresh: 0.1
-    detector.edgeThreshold : 15
-    detector.sigma         : 2.0
-    matching.ratio_thresh  : 0.75
+    detector.type           : SIFT
+    detector.nfeatures      : 500
+    detector.nOctaveLayers  : 15
+    detector.contrastThresh : 0.1
+    detector.edgeThreshold  : 15
+    detector.sigma          : 2.0
+    detector.root_sift      : False
+    matching.ratio_thresh   : 0.75
+    matching.ransac_reproj  : 5.0
+    matching.ransac_min_inl : 4
 
   [Heineken]
-    detector.type          : SIFT
-    detector.nfeatures     : 500
-    detector.nOctaveLayers : 15
-    detector.contrastThresh: 0.1
-    detector.edgeThreshold : 5
-    detector.sigma         : 2.0
-    matching.ratio_thresh  : 0.67
+    detector.type           : SIFT
+    detector.nfeatures      : 500
+    detector.nOctaveLayers  : 15
+    detector.contrastThresh : 0.1
+    detector.edgeThreshold  : 5
+    detector.sigma          : 2.0
+    detector.root_sift      : False
+    matching.ratio_thresh   : 0.67
+    matching.ransac_reproj  : 5.0
+    matching.ransac_min_inl : 4
 
   [Marlboro]
-    detector.type          : SIFT
-    detector.nfeatures     : 500
-    detector.nOctaveLayers : 15
-    detector.contrastThresh: 0.1
-    detector.edgeThreshold : 5
-    detector.sigma         : 2.0
-    matching.ratio_thresh  : 0.67
+    detector.type           : SIFT
+    detector.nfeatures      : 500
+    detector.nOctaveLayers  : 15
+    detector.contrastThresh : 0.1
+    detector.edgeThreshold  : 5
+    detector.sigma          : 2.0
+    detector.root_sift      : False
+    matching.ratio_thresh   : 0.67
+    matching.ransac_reproj  : 5.0
+    matching.ransac_min_inl : 4
 
   [Starbucks]
-    detector.type          : SIFT
-    detector.nfeatures     : 500
-    detector.nOctaveLayers : 15
-    detector.contrastThresh: 0.1
-    detector.edgeThreshold : 5
-    detector.sigma         : 2.0
-    matching.ratio_thresh  : 0.67
+    detector.type           : SIFT
+    detector.nfeatures      : 500
+    detector.nOctaveLayers  : 15
+    detector.contrastThresh : 0.1
+    detector.edgeThreshold  : 5
+    detector.sigma          : 2.0
+    detector.root_sift      : False
+    matching.ratio_thresh   : 0.67
+    matching.ransac_reproj  : 5.0
+    matching.ransac_min_inl : 4
 
 ============================================================
