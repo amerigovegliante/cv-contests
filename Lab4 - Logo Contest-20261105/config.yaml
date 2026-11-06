@@ -12,33 +12,31 @@
 
 detector:
   type: SIFT
-  nfeatures: 500
+  nfeatures: 1000
   nOctaveLayers: 15
   contrastThreshold: 0.1
   edgeThreshold: 5
   sigma: 2.0
-  root_sift: false
+  root_sift: true
 
 matching:
   ratio_thresh: 0.67
   ransac_reproj_thresh: 5.0
   ransac_min_inliers: 4
-  use_ransac: false
+  use_ransac: true
 
 queries:
 
   cocacola:
     detector:
       type: SIFT
-      nfeatures: 500
+      nfeatures: 500            # unlimited
       nOctaveLayers: 15
       contrastThreshold: 0.1
-      edgeThreshold: 15          # the key discovery
+      edgeThreshold: 20       # even more permissive than 15
       sigma: 2.0
-      root_sift: false
     matching:
       ratio_thresh: 0.75
-      use_ransac: false
 
   heineken:
     detector:
@@ -48,7 +46,7 @@ queries:
       contrastThreshold: 0.1
       edgeThreshold: 5
       sigma: 2.0
-      root_sift: false
+      root_sift: true
     matching:
       ratio_thresh: 0.67
       use_ransac: false

@@ -1,17 +1,17 @@
 ============================================================
            LOGO CONTEST - RESULTS
 ============================================================
-Run date : 2026-11-06 01:00:43
+Run date : 2026-11-06 01:15:05
 
 RESULTS
 ----------------------------------------
 Average Precision (AP):
-  Cocacola      ==>  0.8048
-  Heineken      ==>  0.8307
+  Cocacola      ==>  0.9182
+  Heineken      ==>  0.8374
   Marlboro      ==>  0.7473
   Starbucks     ==>  0.9036
 
-Mean Average Precision (mAP)  ==>  0.8216
+Mean Average Precision (mAP)  ==>  0.8516
 
 PARAMETERS USED PER QUERY
 ----------------------------------------
@@ -20,9 +20,9 @@ PARAMETERS USED PER QUERY
     detector.nfeatures      : 500
     detector.nOctaveLayers  : 15
     detector.contrastThresh : 0.1
-    detector.edgeThreshold  : 15
+    detector.edgeThreshold  : 20
     detector.sigma          : 2.0
-    detector.root_sift      : False
+    detector.root_sift      : True
     matching.ratio_thresh   : 0.75
     matching.ransac_reproj  : 5.0
     matching.ransac_min_inl : 4
@@ -34,7 +34,7 @@ PARAMETERS USED PER QUERY
     detector.contrastThresh : 0.1
     detector.edgeThreshold  : 5
     detector.sigma          : 2.0
-    detector.root_sift      : False
+    detector.root_sift      : True
     matching.ratio_thresh   : 0.67
     matching.ransac_reproj  : 5.0
     matching.ransac_min_inl : 4
